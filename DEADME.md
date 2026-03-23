@@ -109,15 +109,47 @@ void post();
 ## 🚀 使用示例
 
 ```cpp
-ThreadPool pool;
-pool.start(4); // 启动4个线程
-
-auto result = pool.submitTask([]() -> int {
-    return 42;
-});
-
-// 获取任务结果
-int value = result.get();
+#include <iostream>
+#include <syncstream>
+#include "ThreadPool.h"
+class MyTask : public Task {
+public:
+	MyTask(int begin, int end) :m_begin(begin), m_end(end) {}
+	Any run() override {
+		long long sum = 0;
+		for (int i = m_begin; i <= m_end; ++i) {
+			sum += i;
+		}
+		return sum;
+	}
+private:
+	int m_begin;
+	int m_end;
+};
+int main()
+{
+	ThreadPool poll;
+	// 用户自己设置线程池的工作模式
+	poll.setMode(PoolMode::MODE_CACHED);
+	// 开始启动线程池，用户自己设置初始线程数量
+	poll.start(4);
+	Result res1 = poll.submitTask(std::make_shared<MyTask>(1, 1000000));
+	Result res2 = poll.submitTask(std::make_shared<MyTask>(1000000 + 1, 2000000));
+	try {
+		long long sum1 = res1.get().Any_cast<long long>();
+		long long sum2 = res2.get().Any_cast<long long>();
+		long long allSum = sum1 + sum2;
+		std::osyncstream(std::cout) << "allSum: " << allSum << std::endl;
+	}
+	catch (const std::exception& e) {
+		std::osyncstream(std::cout) << "Exception: " << e.what() << std::endl;
+	}
+	catch (...) {
+		std::osyncstream(std::cout) << "Unknown exception occurred." << std::endl;
+	}
+	std::osyncstream(std::cout) << "All tasks completed." << std::endl;
+	return 0;
+}
 ```
 
 ---
