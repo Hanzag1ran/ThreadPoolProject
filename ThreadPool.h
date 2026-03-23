@@ -35,7 +35,7 @@ public:
 	Any() = default;
 	// 构造函数是模板函数，通过隐式类型转换，可以传入任意数据类型
 	template<typename T,	// SFINAE：禁止当 T 的 decayed 类型为 Any 时使用此模板构造函数，而是适配 Any 的移动构造
-		typename = std::enable_if_t<!std::is_same_v<std::decay_t<T>, Any>>>	// 防止模板构造函数劫持移动构造函数
+		typename = std::enable_if_t<!std::is_same_v<std::decay_t<T>, Any>>>	// ⭐⭐⭐防止模板构造函数劫持移动构造函数
 	Any(T&& data)	// 构造函数最好使用完美转发
 		:m_base(std::make_unique<Derived<std::decay_t<T>>>(std::forward<T>(data))) {
 	}
@@ -136,7 +136,7 @@ private:
 
 
 // 线程池支持的模式
-enum class PollMode
+enum class PoolMode
 {
 	MODE_FIXED,	// 固定线程数
 	MODE_CACHED	// 线程数量可动态增长
@@ -182,7 +182,7 @@ public:
 	~ThreadPool();
 
 	// 设置线程池的工作模式-只能在start之前设置
-	void setMode(PollMode mode);
+	void setMode(PoolMode mode);
 
 	// 设置初始的线程数量-只能在start之前设置
 	void setInitThreadSize(std::size_t size);
@@ -213,18 +213,19 @@ private:
 	bool isExit() const { return m_isExit; }
 	bool isFull() const { return m_taskSize >= m_taskQueMaxThreshold; }
 	std::size_t m_initThreadSize;	// 初始的线程数量
-	std::size_t m_idleThreadSize;	// 空闲线程的数量
-	std::size_t m_threadSizeMaxThreshold;		// 线程数量的上限阈值
+	std::atomic_uint m_idleThreadSize;	// 空闲线程的数量
+	std::atomic_uint m_curThreadSize;	// 记录当前线程池当中线程的总数量
+	std::size_t m_threadSizeMaxThreshold;	// 线程数量的上限阈值
 
 	std::queue<std::shared_ptr<Task>> m_taskQue;		// 任务队列
-	std::atomic_uint m_taskSize;	// 任务数量
+	std::atomic_uint m_taskSize;	// 任务的数量
 	std::size_t m_taskQueMaxThreshold;		// 任务队列的上限阈值
 
 	std::mutex m_taskQueMtx;	// 保证任务队列的线程安全
 	std::condition_variable m_notFull;	// 任务队列非满条件变量
 	std::condition_variable m_notEmpty;	// 任务队列非空条件变量
 
-	PollMode m_pollMode;	// 当前线程池的工作模式
+	PoolMode m_poolMode;	// 当前线程池的工作模式
 	std::atomic_bool m_isStart;	// 线程池是否启动
 	std::atomic_bool m_isExit;	// 线程池是否退出
 	std::vector<std::unique_ptr<Thread>> m_threads;	// 线程列表-不需要线程安全

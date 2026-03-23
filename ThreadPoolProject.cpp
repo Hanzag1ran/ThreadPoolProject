@@ -27,7 +27,7 @@ int main()
 {
 	ThreadPool poll;
 	// 用户自己设置线程池的工作模式
-	poll.setMode(PollMode::MODE_CACHED);
+	poll.setMode(PoolMode::MODE_CACHED);
 
 	// 开始启动线程池，用户自己设置初始线程数量
 	poll.start(4);

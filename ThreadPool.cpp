@@ -69,11 +69,12 @@ void Task::setResult(Result* result) {
 // 线程池构造函数
 ThreadPool::ThreadPool()
 	: m_initThreadSize(DEFAULT_THREAD_SIZE)
+	, m_curThreadSize(0)
 	, m_idleThreadSize(0)
 	, m_threadSizeMaxThreshold(DEFAULT_THREAD_SIZE_MAX_THRESHOLD)
 	, m_taskSize(0)
 	, m_taskQueMaxThreshold(DEFAULT_TASK_QUE_MAX_THRESHOLD)
-	, m_pollMode(PollMode::MODE_FIXED)
+	, m_poolMode(PoolMode::MODE_FIXED)
 	, m_isStart(false)
 	, m_isExit(false) {
 }
@@ -83,29 +84,42 @@ ThreadPool::~ThreadPool() {
 }
 
 // 设置线程池的工作模式-只能在start之前设置
-void ThreadPool::setMode(PollMode mode) {
+void ThreadPool::setMode(PoolMode mode) {
 	if (isStarted()) {
-		std::osyncstream(std::cerr) << "thread pool has already started, can't change mode." << std::endl;
+		std::osyncstream(std::cerr) << "thread pool has already started, can't change mode.\n";
 		return;	// 线程池已经启动了，不能修改工作模式了
 	}
-	m_pollMode = mode;
+	m_poolMode = mode;
 }
 
 // 设置初始的线程数量-只能在start之前设置
 void ThreadPool::setInitThreadSize(std::size_t size) {
-	if (isStarted())	return;	// 线程池已经启动了，不能修改初始线程数量了
+	if (isStarted()) {
+		std::osyncstream(std::cerr) << "thread pool has already started, can't change init_thread_size.\n";
+		return;	// 线程池已经启动了，不能修改初始线程数量了
+	}
 	m_initThreadSize = size;
 }
 
 // 设置task任务队列的上限阈值-只能在start之前设置
 void ThreadPool::setTaskQueMaxThreshold(std::size_t threshold) {
-	if (isStarted())	return;	// 线程池已经启动了，不能修改任务队列上限阈值了
+	if (isStarted()) {
+		std::osyncstream(std::cerr) << "thread pool has already started, can't change task_queue_max_threshold.\n";
+		return;	// 线程池已经启动了，不能修改任务队列上限阈值了
+	}
 	m_taskQueMaxThreshold = threshold;
 }
 
 // 设置线程数量的上限阈值-只能在start之前设置
 void ThreadPool::setThreadSizeMaxThreshold(std::size_t threshold) {
-	if (isStarted())	return;	// 线程池已经启动了，不能修改线程数量上限阈值了
+	if (isStarted()) {
+		std::osyncstream(std::cerr) << "thread pool has already started, can't change thread_size_max_threshold.\n";
+		return;	// 线程池已经启动了，不能修改线程数量上限阈值了
+	}
+	if (m_poolMode != PoolMode::MODE_CACHED) {
+		std::osyncstream(std::cerr) << "only cached mode allows setting thread_size_max_threshold.\n";
+		return;	// 只有cached模式才需要设置线程数量上限阈值，fixed模式不需要设置线程数量上限阈值
+	}
 	m_threadSizeMaxThreshold = threshold;
 }
 
@@ -133,6 +147,18 @@ Result ThreadPool::submitTask(std::shared_ptr<Task> sp) {
 	m_notEmpty.notify_one();
 
 	// cached模式：【小而快的任务】需要根据任务数量和线程数量的关系，动态增加/减少线程数量
+	if(m_poolMode == PoolMode::MODE_CACHED
+		&& m_taskSize > m_idleThreadSize
+		&& m_curThreadSize < m_threadSizeMaxThreshold)
+	{
+		// 需要增加线程了
+		auto ptr = std::make_unique<Thread>(std::bind(&ThreadPool::threadFunc, this));
+		m_threads.emplace_back(std::move(ptr));
+		m_threads.back()->start();
+		++m_idleThreadSize;
+		++m_curThreadSize;
+	}
+
 
 
 
@@ -150,6 +176,7 @@ void ThreadPool::start(std::size_t initThreadSize) {
 	m_isStart = true;
 	// 记录初始线程个数
 	m_initThreadSize = initThreadSize;
+	m_curThreadSize = initThreadSize;
 	// 创建线程对象
 	for (std::size_t i = 0; i < initThreadSize; ++i) {
 		// 创建Thread线程对象的时候，把线程函数给到Thread线程对象
